@@ -10,7 +10,7 @@ struct Light {
     vec4 color;
 };
 
-struct Material{
+struct Material {
     vec4 ambient;
     vec4 diffuse;
     vec4 specular;
@@ -24,11 +24,6 @@ struct Camera {
     float fov;
 };
 
-struct Surface {
-    float sd; // signed distance
-    vec3 col; // color
-};
-
 // Definition of all curves
 struct Sphere {
     vec3 center;
@@ -36,53 +31,50 @@ struct Sphere {
     vec3 col;
 };
 
-Surface sdSphere(vec3 p, const Sphere sphere) {
-    return Surface(length(p - sphere.center) - sphere.radius, sphere.col);
+float sdSphere(vec3 p, const Sphere sphere) {
+    return length(p - sphere.center) - sphere.radius;
 }
 
-Surface minSurf(Surface a, Surface b) {
-    if (a.sd < b.sd) {
-        return a;
-    } else {
-        return b;
-    }
-}
-
-
+// build the scene
 Sphere sphere1 = Sphere(vec3(-2.5, 0, -2), 1.0, vec3(1, 0.58, 0.29));
 Sphere sphere2 = Sphere(vec3(2.5, 0, -2), 0.5, vec3(0, 0.8, 0.8));
-Surface sdScene(vec3 p) {
-    Surface val = sdSphere(p, sphere1);
-    val = minSurf(val, sdSphere(p, sphere2));
-    return val;
+
+vec2 opU(vec2 d1, vec2 d2) {
+    return (d1.x < d2.x) ? d1 : d2;
+}
+
+vec2 map(vec3 p) {
+    vec2 res = vec2(MAX_DIST, 0);
+    res = opU(res, vec2(sdSphere(p, sphere1), 1));
+    res = opU(res, vec2(sdSphere(p, sphere2), 2));
+    return res;
 }
 
 
 // Ray Marching Definition
-Surface rayMarch(vec3 ro, vec3 rd, float start, float end) {
+vec2 rayMarch(vec3 ro, vec3 rd, float start, float end) {
     float depth = start;
-    Surface co; // closest object
+    vec2 res = vec2(0.0);
+    float id = 0.;
 
     for (int i = 0; i < MAX_MARCHING_STEPS; i++) {
         vec3 p = ro + depth * rd;
-        co = sdScene(p);
-        depth += co.sd;
-        if (co.sd < PRECISION || depth > end) break;
+        res = map(p);
+        depth += res.x;
+        id = res.y;
+        if (res.x < PRECISION || depth > end) break;
     }
-
-    co.sd = depth;
-
-    return co;
+    return vec2(depth, id);
 }
 
 
 vec3 calcNormal(vec3 p) {
     vec2 e = vec2(1.0, -1.0) * 0.0005;
     return normalize(
-            e.xyy * sdScene(p + e.xyy).sd +
-            e.yyx * sdScene(p + e.yyx).sd +
-            e.yxy * sdScene(p + e.yxy).sd +
-            e.xxx * sdScene(p + e.xxx).sd);
+            e.xyy * map(p + e.xyy).x +
+            e.yyx * map(p + e.yyx).x +
+            e.yxy * map(p + e.yxy).x +
+            e.xxx * map(p + e.xxx).x);
 }
 
 
@@ -91,24 +83,30 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec3 col = vec3(0);
 
     // define the position of the camera
-    vec3 ro = vec3(0, 0, 2);
+    vec3 ro = vec3(0, 0, 5);
     vec3 rd = normalize(vec3(uv, -1));
 
-    Surface co = rayMarch(ro, rd, MIN_DIST, MAX_DIST);
+    vec2 res = rayMarch(ro, rd, MIN_DIST, MAX_DIST);
     vec3 lightPosition = vec3(2, 2, 4);
 
-    if (co.sd > 100.0) {
+    if (res.x > 100.0) {
         // ray didn't hit anything
         col = BG_COLOR;
     } else {
         // ray hit something
-        // 我们必须先计算光射在曲面的点，才能算法向量
-        vec3 p = ro + rd * co.sd;
+        vec3 p = ro + rd * res.x;
         vec3 normal = calcNormal(p);
         vec3 lightDirection = normalize(lightPosition - p);
         float dif = clamp(dot(normal, lightDirection), 0.1, 1.);
 
-        col = vec3(dif) * co.col;
+        int id = int(res.y);
+        if (id == 1) {
+            col = dif * sphere1.col;
+        } else if (id == 2) {
+            col = dif * sphere2.col;
+        } else {
+            col = vec3(dif);
+        }
     }
 
     // Output to screen
