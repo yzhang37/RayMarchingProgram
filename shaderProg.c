@@ -12,9 +12,9 @@ struct Light {
 };
 
 struct Material {
-    vec4 ambient;
-    vec4 diffuse;
-    vec4 specular;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
     float highlight;
 };
 
@@ -30,6 +30,7 @@ struct Sphere {
     vec3 center;
     float radius;
     vec3 col;
+    Material mat;
 };
 
 float sdSphere(vec3 p, const Sphere sphere) {
@@ -41,6 +42,7 @@ struct RoundBox {
     vec3 size;
     float radius;
     vec3 col;
+    Material mat;
 };
 
 float sdRoundBox(vec3 p, const RoundBox round)
@@ -49,14 +51,23 @@ float sdRoundBox(vec3 p, const RoundBox round)
     return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0) - round.radius;
 }
 
-float sdFloor(vec3 p) {
-    return p.y + 1.; // y = -1
+struct Plane {
+    float y_offset;
+    Material mat;
+};
+
+float sdPlane(vec3 p, const Plane plane) {
+    return p.y - plane.y_offset;
 }
 
 // build the scene
-RoundBox round1 = RoundBox(vec3(-2., 0., 0.5), vec3(0.5, 0.3, 0.3), 0.2, vec3(1., 0., 0.));
-RoundBox round2 = RoundBox(vec3(2., 0., -0.5), vec3(0.5, 0.3, 0.3), 0.2, vec3(0., 1., 0.));
-Sphere sphere1 = Sphere(vec3(0, 0, 0), 0.55, vec3(1, 0.58, 0.29));
+const Material mat_round = Material(BG_COLOR, vec3(0.6), vec3(0.15), 32.);
+RoundBox round1 = RoundBox(vec3(-2., 0., 0.5), vec3(0.5, 0.3, 0.3), 0.2, vec3(1., 0., 0.), mat_round);
+RoundBox round2 = RoundBox(vec3(2., 0., -0.5), vec3(0.5, 0.3, 0.3), 0.2, vec3(0., 1., 0.), mat_round);
+const Material mat_sph = Material(BG_COLOR, vec3(0.3), vec3(0.85), 16.);
+Sphere sphere1 = Sphere(vec3(0, 0, 0), 0.55, vec3(1, 0.58, 0.29), mat_sph);
+const Material mat_plan = Material(vec3(0.0), vec3(0.5), vec3(0.5), 64.);
+Plane plane1 = Plane(-1., mat_plan);
 
 vec2 opU(vec2 d1, vec2 d2) {
     return (d1.x < d2.x) ? d1 : d2;
@@ -67,7 +78,7 @@ vec2 map(vec3 p) {
     res = opU(res, vec2(sdRoundBox(p, round1), 1));
     res = opU(res, vec2(sdRoundBox(p, round2), 2));
     res = opU(res, vec2(sdSphere(p, sphere1), 3));
-    res = opU(res, vec2(sdFloor(p), 4));
+    res = opU(res, vec2(sdPlane(p, plane1), 4));
     return res;
 }
 
@@ -118,19 +129,41 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         vec3 p = ro + rd * res.x;
         vec3 normal = calcNormal(p);
         vec3 lightDirection = normalize(lightPosition - p);
-        float dif = clamp(dot(normal, lightDirection), AMBIENT, 1.);
-
         int id = int(res.y);
+
+        // first compute illumination
+        Material mat;
+        if (id == 1)
+            mat = round1.mat;
+        else if (id == 2)
+            mat = round2.mat;
+        else if (id == 3)
+            mat = sphere1.mat;
+        else if (id == 4)
+            mat = plane1.mat;
+        else
+            mat = Material(BG_COLOR, vec3(0.0), vec3(0.0), 2.);
+
+        // ambient
+        vec3 il = mat.ambient;
+        // diffuse
+        vec3 dif = clamp(dot(normal, lightDirection), 0., 1.) * mat.diffuse;
+        il += clamp(dif, mat.ambient, vec3(1.));
+        // specular
+        il += mat.specular * pow(clamp(dot(normal, reflect(-lightDirection, normal)), 0., 1.), mat.highlight);
+        il = clamp(il, 0., 1.);
+
+        // then compute the color
         if (id == 1) {
-            col = dif * round1.col;
+            col = il * round1.col;
         } else if (id == 2) {
-            col = dif * round2.col;
+            col = il * round2.col;
         } else if (id == 3) {
-            col = dif * sphere1.col;
+            col = il * sphere1.col;
         } else if (id == 4) {
-            col = dif * vec3(1. + 0.7 * mod(floor(p.x) + floor(p.z), 2.0));
+            col = il * vec3(1. + 0.7 * mod(floor(p.x) + floor(p.z), 2.0));
         } else {
-            col = vec3(dif);
+            col = il;
         }
     }
 
