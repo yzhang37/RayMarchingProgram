@@ -2,7 +2,8 @@ const int MAX_MARCHING_STEPS = 255;
 const float MIN_DIST = 0.0;
 const float MAX_DIST = 100.0;
 const float PRECISION = 0.001;
-const vec3 BG_COLOR = vec3(0.6);
+const float AMBIENT = 0.05;
+const vec3 BG_COLOR = vec3(AMBIENT);
 
 
 struct Light {
@@ -35,6 +36,10 @@ float sdSphere(vec3 p, const Sphere sphere) {
     return length(p - sphere.center) - sphere.radius;
 }
 
+float sdFloor(vec3 p) {
+    return p.y + 1.; // y = -1
+}
+
 // build the scene
 Sphere sphere1 = Sphere(vec3(-2.5, 0, -2), 1.0, vec3(1, 0.58, 0.29));
 Sphere sphere2 = Sphere(vec3(2.5, 0, -2), 0.5, vec3(0, 0.8, 0.8));
@@ -47,6 +52,7 @@ vec2 map(vec3 p) {
     vec2 res = vec2(MAX_DIST, 0);
     res = opU(res, vec2(sdSphere(p, sphere1), 1));
     res = opU(res, vec2(sdSphere(p, sphere2), 2));
+    res = opU(res, vec2(sdFloor(p), 3));
     return res;
 }
 
@@ -97,13 +103,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         vec3 p = ro + rd * res.x;
         vec3 normal = calcNormal(p);
         vec3 lightDirection = normalize(lightPosition - p);
-        float dif = clamp(dot(normal, lightDirection), 0.1, 1.);
+        float dif = clamp(dot(normal, lightDirection), AMBIENT, 1.);
 
         int id = int(res.y);
         if (id == 1) {
             col = dif * sphere1.col;
         } else if (id == 2) {
             col = dif * sphere2.col;
+        } else if (id == 3) {
+            col = dif * vec3(1. + 0.7 * mod(floor(p.x) + floor(p.z), 2.0));
         } else {
             col = vec3(dif);
         }
