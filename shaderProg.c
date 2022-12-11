@@ -8,7 +8,7 @@ const vec3 BG_COLOR = vec3(AMBIENT);
 
 struct Light {
     vec3 position;
-    vec4 color;
+    vec3 color;
 };
 
 struct Material {
@@ -61,11 +61,11 @@ float sdPlane(vec3 p, const Plane plane) {
 }
 
 // build the scene
-const Material mat_round = Material(BG_COLOR, vec3(0.6), vec3(0.15), 32.);
+const Material mat_round = Material(BG_COLOR, vec3(0.6), vec3(0.35), 64.);
 RoundBox round1 = RoundBox(vec3(-2., 0., 0.5), vec3(0.5, 0.3, 0.3), 0.2, vec3(1., 0., 0.), mat_round);
 RoundBox round2 = RoundBox(vec3(2., 0., -0.5), vec3(0.5, 0.3, 0.3), 0.2, vec3(0., 1., 0.), mat_round);
 const Material mat_sph = Material(BG_COLOR, vec3(0.3), vec3(0.85), 16.);
-Sphere sphere1 = Sphere(vec3(0, 0, 0), 0.55, vec3(1, 0.58, 0.29), mat_sph);
+Sphere sphere1 = Sphere(vec3(0, 0, 0), 0.55, vec3(1., 1., 1.), mat_sph);
 const Material mat_plan = Material(vec3(0.0), vec3(0.5), vec3(0.5), 64.);
 Plane plane1 = Plane(-1., mat_plan);
 
@@ -118,8 +118,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec3 ro = vec3(0, 0, 5);
     vec3 rd = normalize(vec3(uv, -1));
 
+    // define the light
+    int light_num = 3;
+    Light[3] lightList = Light[] (
+            Light(vec3(3. * cos(iTime * 1.2), 3, 3. * sin(iTime * 1.2)), vec3(1.0, 0.75, 0.388)),
+            Light(vec3(-3. * cos(iTime * 1.2), -3. * sin(iTime * 1.2), 3), vec3(0.373, 0.831, 1.0)),
+            Light(vec3(5. * cos(iTime * 0.25), 0, 5. * sin(iTime * 0.25)), vec3(0.7))
+    );
+
     vec2 res = rayMarch(ro, rd, MIN_DIST, MAX_DIST);
-    vec3 lightPosition = vec3(2, 2, 4);
 
     if (res.x > 100.0) {
         // ray didn't hit anything
@@ -128,7 +135,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         // ray hit something
         vec3 p = ro + rd * res.x;
         vec3 normal = calcNormal(p);
-        vec3 lightDirection = normalize(lightPosition - p);
         int id = int(res.y);
 
         // first compute illumination
@@ -144,26 +150,33 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         else
             mat = Material(BG_COLOR, vec3(0.0), vec3(0.0), 2.);
 
-        // ambient
-        vec3 il = mat.ambient;
-        // diffuse
-        vec3 dif = clamp(dot(normal, lightDirection), 0., 1.) * mat.diffuse;
-        il += clamp(dif, mat.ambient, vec3(1.));
-        // specular
-        il += mat.specular * pow(clamp(dot(normal, reflect(-lightDirection, normal)), 0., 1.), mat.highlight);
-        il = clamp(il, 0., 1.);
+        vec3 ill_sum = vec3(0.0);
+        for (int i = 0; i < light_num; ++i) {
+            Light l = lightList[i];
+            vec3 lightDirection = normalize(l.position - p);
+            // ambient
+            vec3 ill = mat.ambient;
+            // diffuse
+            vec3 dif = clamp(dot(normal, lightDirection), 0., 1.) * mat.diffuse;
+            ill += clamp(dif, mat.ambient, vec3(1.));
+            // specular
+            ill += mat.specular * pow(clamp(dot(normal, reflect(-lightDirection, normal)), 0., 1.), mat.highlight);
+            ill *= l.color;
+            ill_sum += ill;
+        }
+        ill_sum = clamp(ill_sum, 0., 1.);
 
         // then compute the color
         if (id == 1) {
-            col = il * round1.col;
+            col = ill_sum * round1.col;
         } else if (id == 2) {
-            col = il * round2.col;
+            col = ill_sum * round2.col;
         } else if (id == 3) {
-            col = il * sphere1.col;
+            col = ill_sum * sphere1.col;
         } else if (id == 4) {
-            col = il * vec3(1. + 0.7 * mod(floor(p.x) + floor(p.z), 2.0));
+            col = ill_sum * vec3(1. + 0.7 * mod(floor(p.x) + floor(p.z), 2.0));
         } else {
-            col = il;
+            col = ill_sum;
         }
     }
 
