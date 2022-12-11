@@ -36,13 +36,27 @@ float sdSphere(vec3 p, const Sphere sphere) {
     return length(p - sphere.center) - sphere.radius;
 }
 
+struct RoundBox {
+    vec3 center;
+    vec3 size;
+    float radius;
+    vec3 col;
+};
+
+float sdRoundBox(vec3 p, const RoundBox round)
+{
+    vec3 q = abs(p - round.center) - round.size;
+    return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0) - round.radius;
+}
+
 float sdFloor(vec3 p) {
     return p.y + 1.; // y = -1
 }
 
 // build the scene
-Sphere sphere1 = Sphere(vec3(-2.5, 0, -2), 1.0, vec3(1, 0.58, 0.29));
-Sphere sphere2 = Sphere(vec3(2.5, 0, -2), 0.5, vec3(0, 0.8, 0.8));
+RoundBox round1 = RoundBox(vec3(-2., 0., 0.5), vec3(0.5, 0.3, 0.3), 0.2, vec3(1., 0., 0.));
+RoundBox round2 = RoundBox(vec3(2., 0., -0.5), vec3(0.5, 0.3, 0.3), 0.2, vec3(0., 1., 0.));
+Sphere sphere1 = Sphere(vec3(0, 0, 0), 0.55, vec3(1, 0.58, 0.29));
 
 vec2 opU(vec2 d1, vec2 d2) {
     return (d1.x < d2.x) ? d1 : d2;
@@ -50,9 +64,10 @@ vec2 opU(vec2 d1, vec2 d2) {
 
 vec2 map(vec3 p) {
     vec2 res = vec2(MAX_DIST, 0);
-    res = opU(res, vec2(sdSphere(p, sphere1), 1));
-    res = opU(res, vec2(sdSphere(p, sphere2), 2));
-    res = opU(res, vec2(sdFloor(p), 3));
+    res = opU(res, vec2(sdRoundBox(p, round1), 1));
+    res = opU(res, vec2(sdRoundBox(p, round2), 2));
+    res = opU(res, vec2(sdSphere(p, sphere1), 3));
+    res = opU(res, vec2(sdFloor(p), 4));
     return res;
 }
 
@@ -107,10 +122,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
         int id = int(res.y);
         if (id == 1) {
-            col = dif * sphere1.col;
+            col = dif * round1.col;
         } else if (id == 2) {
-            col = dif * sphere2.col;
+            col = dif * round2.col;
         } else if (id == 3) {
+            col = dif * sphere1.col;
+        } else if (id == 4) {
             col = dif * vec3(1. + 0.7 * mod(floor(p.x) + floor(p.z), 2.0));
         } else {
             col = vec3(dif);
